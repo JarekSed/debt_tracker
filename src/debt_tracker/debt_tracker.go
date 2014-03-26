@@ -15,7 +15,7 @@ func root_handler(w http.ResponseWriter, r *http.Request) {
     r.ParseForm()
     fmt.Printf("request to %s\n", r.URL.Path[1:])
     fmt.Printf( "%v\n", r)
-    fmt.Printf( "%v\n", r.Form['Text'])
+    fmt.Printf( "%v\n", r.Form["Text"])
 }
 
 func main() {
