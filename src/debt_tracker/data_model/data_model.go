@@ -42,6 +42,10 @@ func (d *Database) GetUserByPhoneNumber(phoneNumber string) (*Person, error) {
 	return &person, nil
 }
 
+func (d *Database) RegisterUser(p Person) error {
+    return d.dbmap.Insert(&p)
+}
+
 func ConnectToDatabase() (*Database, error) {
 	database_string := fmt.Sprintf("%v/%v/%v", *databaseName, *databaseUser, *databasePassword)
 	db, err := sql.Open("mymysql", database_string)

@@ -6,8 +6,11 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+    "strings"
+    "strconv"
     "debt_tracker/data_model"
     "encoding/json"
+    "regexp"
 )
 
 var port = flag.Int("port", 8080, "Port to listen on.")
@@ -18,14 +21,70 @@ var plivo_auth_token = flag.String("plivo_auth_token", "ZjYzMjk3MTQwNWYwNWVkMWUw
 func rootHandler(w http.ResponseWriter, r *http.Request, database *debt_tracker.Database) {
 	r.ParseForm()
     fromNumber := r.Form["From"][0]
+    message := strings.Join(r.Form["Text"], " ")
     sender, err := database.GetUserByPhoneNumber(fromNumber)
     if err != nil {
         log.Fatal("Error getting user from number: ", err)
     }else if sender == nil {
-        SendMessage(fromNumber, "Who the fuck are you?")
-        log.Print("Message from unknown number " ,fromNumber, ": ", r.Form["Body"])
+        handleMessageFromUnknownNumber(fromNumber, message, database)
     } else {
-        fmt.Print(*sender, " sent that message!")
+        handleMessageFromUser(sender, message, database)
+    }
+}
+
+// The sender's balance increases when he gets pays someone, or someone else owes him money.
+func isSenderBalanceIncreaseMessage(message string) bool {
+    // TODO: don't compile regex every time.
+    var wasPaidRegex = regexp.MustCompile(`(Owes Me)|(I Paid)|(I Gave)`)
+    return wasPaidRegex.MatchString(message)
+}
+
+// The sender's balance decreases when he gets paid, or he owes someone money
+func isSenderBalanceDecreaseMessage(message string) bool {
+    // TODO: don't compile regex every time.
+    var wasPaidRegex = regexp.MustCompile(`(I Owe)|(Paid Me)|(Gave Me)`)
+    return wasPaidRegex.MatchString(message)
+}
+
+
+func handleMessageFromUser(p *debt_tracker.Person, message string, database *debt_tracker.Database) {
+    message = strings.Title(message)
+    log.Print("Message from ", p.FullName(), ": ", message)
+
+    if isSenderBalanceIncreaseMessage(message) {
+        log.Println(p.FullName(), " is owed money")
+    } else if isSenderBalanceDecreaseMessage(message) {
+        log.Println(p.FullName(), " owes someone money")
+    } else {
+        log.Println("Unknown message...")
+    }
+
+}
+
+func handleMessageFromUnknownNumber(fromNumber string, message string, database *debt_tracker.Database) {
+    log.Print("Message from unknown number " ,fromNumber, ": ", message)
+    words := strings.Fields(strings.Title(message))
+    number, err := strconv.ParseUint(fromNumber, 10, 64)
+    if err != nil {
+        log.Fatal("Invalid from number: ", fromNumber)
+    }
+    // If this was a register request, register the new user
+    // TODO: verify the number
+    if len(words) == 3 && strings.ToLower(words[0]) == "register" {
+        p := debt_tracker.Person{
+            FirstName: words[1],
+            LastName: words[2],
+            PhoneNumber: number,
+        }
+        err := database.RegisterUser(p)
+        if err != nil {
+            log.Fatal("Error Registering user: ", err)
+        } else {
+            SendMessage(strconv.FormatUint(p.PhoneNumber, 10), fmt.Sprintf("Welcome %s!", p.FullName()))
+            log.Printf("Added %s with phone number: %v\n", p.FullName(), p.PhoneNumber)
+        }
+    } else {
+        SendMessage(fromNumber, "Who the fuck are you?")
     }
 }
 
